@@ -5,11 +5,17 @@ A super simple FastAPI application that allows students to view and sign up
 for extracurricular activities at Mergington High School.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 import os
 from pathlib import Path
+
+try:
+    from .auth import authenticate, create_session, end_session, require_teacher
+except ImportError:
+    from auth import authenticate, create_session, end_session, require_teacher
 
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
@@ -83,14 +89,47 @@ def root():
     return RedirectResponse(url="/static/index.html")
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/auth/login")
+def login(credentials: LoginRequest):
+    """Log in a teacher and return a bearer token"""
+    teacher = authenticate(credentials.username, credentials.password)
+    if teacher is None:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    token = create_session(teacher["username"])
+    return {
+        "token": token,
+        "username": teacher["username"],
+        "display_name": teacher.get("display_name", teacher["username"]),
+    }
+
+
+@app.post("/auth/logout")
+def logout(teacher: dict = Depends(require_teacher)):
+    """End the current teacher session"""
+    end_session(teacher["token"])
+    return {"message": "Logged out"}
+
+
+@app.get("/auth/me")
+def current_teacher(teacher: dict = Depends(require_teacher)):
+    """Return the logged-in teacher"""
+    return {"username": teacher["username"], "display_name": teacher["display_name"]}
+
+
 @app.get("/activities")
 def get_activities():
     return activities
 
 
 @app.post("/activities/{activity_name}/signup")
-def signup_for_activity(activity_name: str, email: str):
-    """Sign up a student for an activity"""
+def signup_for_activity(activity_name: str, email: str,
+                        teacher: dict = Depends(require_teacher)):
+    """Sign up a student for an activity (teachers only)"""
     # Validate activity exists
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Activity not found")
@@ -111,8 +150,9 @@ def signup_for_activity(activity_name: str, email: str):
 
 
 @app.delete("/activities/{activity_name}/unregister")
-def unregister_from_activity(activity_name: str, email: str):
-    """Unregister a student from an activity"""
+def unregister_from_activity(activity_name: str, email: str,
+                             teacher: dict = Depends(require_teacher)):
+    """Unregister a student from an activity (teachers only)"""
     # Validate activity exists
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Activity not found")

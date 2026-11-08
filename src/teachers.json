@@ -1,0 +1,9 @@
+{
+  "teachers": [
+    {
+      "username": "mrodriguez",
+      "display_name": "Ms. Rodriguez",
+      "password_hash": "pbkdf2_sha256$200000$7abd1df9ea982af9cf57a70f263e1f25$eb7744e56065b76970b4ec87473b7587083b7b86c08ccb7d74951a75e4afa680"
+    }
+  ]
+}
